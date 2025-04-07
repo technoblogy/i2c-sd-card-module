@@ -8,6 +8,11 @@
    http://creativecommons.org/licenses/by/4.0/
 */
 
+/*
+Added function to retrieve if file exists
+Corrected compie warning in boolean DataHostWrite ()
+*/
+
 #include <SD.h>
  
 File myFile;
@@ -58,6 +63,8 @@ boolean AddressHostWrite () {
 void DataHostRead () {
   if (command == 'R') {
     TWI0.SDATA = myFile.read();                          // Host read operation
+  } else if (command == 'E') {                           
+    TWI0.SDATA = SD.exists(Filename);                // Host query if file exists (Returns: 1 if the file or directory exists, 0 if not.)
   } else if (command == 'S') { 
     if (ptr < 4) {
       if (ptr == 0) Filesize = myFile.size();
@@ -102,6 +109,7 @@ boolean DataHostWrite () {
   } else if (command == 'R' || command == 'S') {
     return false;
   }
+  return false;
 }
 
 void Stop () {
