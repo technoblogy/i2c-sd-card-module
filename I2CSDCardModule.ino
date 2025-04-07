@@ -113,7 +113,7 @@ boolean DataHostWrite () {
 }
 
 void Stop () {
-  if (command == 'W' || command == 'R' || command == 'A' || command == 'S') {
+  if (command == 'W' || command == 'R' || command == 'A' || command == 'S' || command == 'E') {
     myFile.close(); LightLED(LEDoff);                    // Close file
   }
 }
