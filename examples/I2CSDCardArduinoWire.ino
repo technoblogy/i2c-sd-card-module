@@ -25,27 +25,43 @@ void loop (void) {
   Wire.endTransmission();
 
   Serial.println("Reading...");
+// Initialize transmission and send file command
   Wire.beginTransmission(address);
   Wire.write('F');
   Wire.write('A');
   Wire.write('2');
   Wire.endTransmission();
+// Get file size
   Wire.beginTransmission(address);
   Wire.write('S');
   Wire.endTransmission(false);
   Wire.requestFrom(address, 4, false);
-  unsigned long size = 0;
-  for (int i=0; i<4; i++) size = size<<8 | Wire.read();
+  uint32_t size = 0;
+  for (uint8_t i = 0; i < 4; i++) {
+    size = (size << 8) | Wire.read();
+  }
+// Read file content
   Wire.beginTransmission(address);
   Wire.write('R');
   Wire.endTransmission(false);
-  while (size > 32) { 
-    Wire.requestFrom(address, 32, false);
-    for (int i=0; i<32; i++) Serial.print((char)Wire.read());
-    size = size - 32;
+// Used fixed-size buffer for better memory management
+  static const uint8_t BUFFER_SIZE = 32;
+  char buffer[BUFFER_SIZE];
+  while (size > BUFFER_SIZE) {
+    Wire.requestFrom(address, BUFFER_SIZE, false);
+    for (uint8_t i = 0; i < BUFFER_SIZE; i++) {
+        buffer[i] = Wire.read();
+    }
+    Serial.write(buffer, BUFFER_SIZE);
+    size -= BUFFER_SIZE;
   }
-  Wire.requestFrom(address, size, true);
-  for (int i=0; i<size; i++) Serial.print((char)Wire.read());
+if (size > 0) {
+    Wire.requestFrom(address, size, true);
+    for (uint8_t i = 0; i < size; i++) {
+        buffer[i] = Wire.read();
+    }
+    Serial.write(buffer, size);
+}
 
   for(;;);
 }
