@@ -40,6 +40,9 @@ void loop (void) {
   for (uint8_t i = 0; i < 4; i++) {
     size = (size << 8) | Wire.read();
   }
+
+  Serial.println(ChkFileExistsOnSD("FA2") ? "Yay! File (FA2) found." : "File not found, so sad");
+  
 // Read file content
   Wire.beginTransmission(address);
   Wire.write('R');
@@ -64,4 +67,33 @@ if (size > 0) {
 }
 
   for(;;);
+}
+
+// Check if file on SDD Card exists
+bool ChkFileExistsOnSD(const char* filename) {
+  Wire.beginTransmission(address);
+  Wire.write('F');
+  while (*filename) Wire.write(*filename++);
+  Wire.endTransmission(false);
+  Wire.beginTransmission(address);
+  Wire.write('E');
+  Wire.endTransmission(false);
+  Wire.requestFrom(address, (int)1, 1);
+  bool fExists;
+  fExists = Wire.read();
+  Wire.endTransmission();
+  if (fExists){
+     return true;
+   } else {
+      return false;
+   }
+}
+
+// Reset the ATtiny1614 from controller
+// Sometimes the file read routine gets stuck or corrupted and needs to be reset
+// usually because of some i2c issues. Reset takes ~20ms
+void reseti2cSDCard(){
+  Wire.beginTransmission(address);
+  Wire.write('Z');
+  Wire.endTransmission();
 }
