@@ -43,7 +43,7 @@ const uint8_t Namelength = 13;
 char Filename[Namelength];
 static union { uint32_t Filesize; uint8_t Filebytes[4]; };
 
-const uint8_t MyAddress = 0x6e;
+const uint8_t MyAddress = 0x55;
 
 // TWI setup **********************************************
 
