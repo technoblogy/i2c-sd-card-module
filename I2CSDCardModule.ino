@@ -17,7 +17,7 @@ Added software reset functioon so the ATTiny can be reset from another controler
 
 
 -----
-Sketch uses 11914 bytes of program storage space.
+Sketch uses 11934 bytes of program storage space.
 Global variables use 821 bytes of dynamic memory
 -----
 */
