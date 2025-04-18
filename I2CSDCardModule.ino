@@ -8,33 +8,42 @@
    http://creativecommons.org/licenses/by/4.0/
 */
 
-/*
+/* --- syntax1269 Mods and additions - April 2025
 Added function to retrieve if file exists
-Corrected compie warning in boolean DataHostWrite ()
-*/
+Corrected Arduino compile warning (control reaches end of non-void function) in boolean DataHostWrite ()
+Added function to remove a file from the SD card.
+Changed general int to stdint.h types saving a few bytes in memory and storage
+Added software reset functioon so the ATTiny can be reset from another controler.
 
+
+-----
+Sketch uses 11914 bytes of program storage space.
+Global variables use 821 bytes of dynamic memory
+-----
+*/
+#include <avr/wdt.h>
 #include <SD.h>
  
 File myFile;
 
 // LEDs **********************************************
 
-const int LEDoff = 0;
-const int LEDgreen = 1;
-const int LEDred = 2;
+const uint8_t LEDoff = 0;
+const uint8_t LEDgreen = 1;
+const uint8_t LEDred = 2;
 
-void LightLED (int colour) {
+void LightLED (uint8_t colour) {
   digitalWrite(5, colour & 1);
   digitalWrite(4, colour>>1 & 1);
 }
 
 // I2C Interface **********************************************
 
-const int Namelength = 13;
+const uint8_t Namelength = 13;
 char Filename[Namelength];
-static union { unsigned long Filesize; uint8_t Filebytes[4]; };
+static union { uint32_t Filesize; uint8_t Filebytes[4]; };
 
-const int MyAddress = 0x55;
+const uint8_t MyAddress = 0x6e;
 
 // TWI setup **********************************************
 
@@ -47,8 +56,8 @@ void I2CSetup () {
 
 // Functions to handle each of the cases **********************************************
 
-int command = 0;                                         // Currently active command
-int ch = 0, ptr = 0;                                     // Filename and size pointers
+uint8_t cmd = 0;                                         // Currently active command
+uint8_t ch = 0, ptr = 0;                                 // Filename and size pointers
 boolean checknack = false;                               // Don't check Host NACK first time
 
 boolean AddressHostRead () {
@@ -56,16 +65,21 @@ boolean AddressHostRead () {
 }
 
 boolean AddressHostWrite () {
-  command = 0; ch = 0; ptr = 0;                          // Reset these on writing
+  cmd = 0; ch = 0; ptr = 0;                          // Reset these on writing
   return true;
 }
-
+//
 void DataHostRead () {
-  if (command == 'R') {
+  if (cmd == 'R') {
     TWI0.SDATA = myFile.read();                          // Host read operation
-  } else if (command == 'E') {                           
+  } else if (cmd == 'E') {                           
     TWI0.SDATA = SD.exists(Filename);                // Host query if file exists (Returns: 1 if the file or directory exists, 0 if not.)
-  } else if (command == 'S') { 
+  } else if (cmd == 'Z') {                           
+    _PROTECTED_WRITE(RSTCTRL.SWRR, 1); // Trigger reset
+    wdt_reset(); // Call the reset function incase software reeset doesn't work, watchdog timer rest will
+  } else if (cmd == 'X') {                           
+    TWI0.SDATA = SD.remove(Filename);                // Remove a file from the SD card. (Returns: 1 if the removal of the file succeeded, 0 if not.)
+  } else if (cmd == 'S') { 
     if (ptr < 4) {
       if (ptr == 0) Filesize = myFile.size();
       TWI0.SDATA = Filebytes[3-ptr];                     // MSB first
@@ -75,14 +89,14 @@ void DataHostRead () {
 }
 
 boolean DataHostWrite () {
-  if (command == 0) {                                    // No command in progress
-    command = TWI0.SDATA;
-    if (!myFile && (command != 'F')) {
-      if (command == 'W') {
+  if (cmd == 0) {                                    // No command in progress
+    cmd = TWI0.SDATA;
+    if (!myFile && (cmd != 'F')) {
+      if (cmd == 'W') {
         myFile = SD.open(Filename, O_RDWR | O_CREAT | O_TRUNC);
-      } else if (command == 'R' || command == 'S') {
+      } else if (cmd == 'R' || cmd == 'S') {
         myFile = SD.open(Filename, O_READ); 
-      } else if (command == 'A') {
+      } else if (cmd == 'A') {
         myFile = SD.open(Filename, O_RDWR | O_CREAT | O_APPEND);
       }
       if (myFile) {
@@ -95,7 +109,7 @@ boolean DataHostWrite () {
     } else {
       return true;
     }
-  } else if (command == 'F') {                           // Read filename
+  } else if (cmd == 'F') {                           // Read filename
     if (ch < Namelength) {
       Filename[ch++] = TWI0.SDATA;
       Filename[ch] = 0;
@@ -103,17 +117,17 @@ boolean DataHostWrite () {
     } else {                                             // Filename too long
       return false;
     }
-  } else if (command == 'W' || command == 'A') {
+  } else if (cmd == 'W' || cmd == 'A') {
     myFile.write(TWI0.SDATA);                            // Write byte to file
     return true;
-  } else if (command == 'R' || command == 'S') {
+  } else if (cmd == 'R' || cmd == 'S') {
     return false;
   }
   return false;
 }
 
 void Stop () {
-  if (command == 'W' || command == 'R' || command == 'A' || command == 'S' || command == 'E') {
+  if (cmd == 'W' || cmd == 'R' || cmd == 'A' || cmd == 'S') {
     myFile.close(); LightLED(LEDoff);                    // Close file
   }
 }
@@ -178,4 +192,10 @@ void setup (void) {
 }
  
 void loop (void) {
+}
+
+// Function to reset the microcontroller
+void reset() {
+  wdt_enable(WDTO_15MS); // Enable Watchdog Timer with a reset timeout of 15ms
+  while (1); // Wait for the watchdog timer to reset the device
 }
