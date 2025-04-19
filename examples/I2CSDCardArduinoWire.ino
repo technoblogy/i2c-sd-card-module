@@ -73,24 +73,21 @@ if (size > 0) {
   for(;;);
 }
 
-// Check if file on SDD Card exists
+// Check if file exists on SD Card
 bool ChkFileExistsOnSD(const char* filename) {
   Wire.beginTransmission(address);
   Wire.write('F');
   while (*filename) Wire.write(*filename++);
   Wire.endTransmission(false);
   Wire.beginTransmission(address);
-  Wire.write('E');
-  Wire.endTransmission(false);
-  Wire.requestFrom(address, (int)1, 1);
-  bool fExists;
-  fExists = Wire.read();
+  Wire.write('E');  // Exists command
   Wire.endTransmission();
-  if (fExists){
-     return true;
-   } else {
-      return false;
-   }
+  // Read response
+  Wire.requestFrom(address, 1);
+  if (Wire.available()) {
+    return Wire.read() != 0;  // Returns true if file exists
+  }
+  return false;
 }
 
 // Reset the ATtiny1614 from controller
