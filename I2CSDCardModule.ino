@@ -94,7 +94,7 @@ static union FileData {
     uint8_t Filebytes[4]; 
 } fileData;
 
-const uint8_t MyAddress = 0x6e;
+const uint8_t MyAddress = 0x55;
 
 // TWI setup **********************************************
 
