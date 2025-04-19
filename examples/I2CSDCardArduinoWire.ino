@@ -42,6 +42,10 @@ void loop (void) {
   }
 
   Serial.println(ChkFileExistsOnSD("FA2") ? "Yay! File (FA2) found." : "File not found, so sad");
+
+  Serial.println("Listing SD card contents:");
+     listSDContents();
+  Serial.println("Done listing files.");
   
 // Read file content
   Wire.beginTransmission(address);
@@ -97,3 +101,34 @@ void reseti2cSDCard(){
   Wire.write('Z');
   Wire.endTransmission();
 }
+
+void listSDContents() {
+  Wire.beginTransmission(ATTINY_ADDRESS);
+  Wire.write('L');  // Send list command
+  Wire.endTransmission();
+  
+  // Read and print all filenames
+  bool moreFiles = true;
+  while (moreFiles) {
+    String filename = "";
+    bool endOfName = false;
+    
+    while (!endOfName) {
+      Wire.requestFrom(ATTINY_ADDRESS, 1);
+      if (Wire.available()) {
+        char c = Wire.read();
+        if (c == 0) {
+          endOfName = true;
+          if (filename.length() == 0) {
+            moreFiles = false;  // No more files to read
+          } else {
+            Serial.println(filename);  // Print the filename
+          }
+        } else {
+          filename += c;
+        }
+      }
+    }
+  }
+}
+
