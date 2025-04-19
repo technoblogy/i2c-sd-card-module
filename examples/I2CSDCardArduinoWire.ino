@@ -103,7 +103,7 @@ void reseti2cSDCard(){
 }
 
 void listSDContents() {
-  Wire.beginTransmission(ATTINY_ADDRESS);
+  Wire.beginTransmission(address);
   Wire.write('L');  // Send list command
   Wire.endTransmission();
   
@@ -114,7 +114,7 @@ void listSDContents() {
     bool endOfName = false;
     
     while (!endOfName) {
-      Wire.requestFrom(ATTINY_ADDRESS, 1);
+      Wire.requestFrom(address, 1);
       if (Wire.available()) {
         char c = Wire.read();
         if (c == 0) {
