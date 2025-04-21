@@ -24,6 +24,14 @@ void loop (void) {
   for (int i=79; i<91; i++) Wire.write(i);
   Wire.endTransmission();
 
+
+Serial.println(ChkFileExistsOnSD("FA2") ? "Yay! File (FA2) found." : "File not found, so sad");
+
+  Serial.println("Listing SD card contents:");
+     listSDContents();
+  Serial.println("Done listing files.");
+
+  
   Serial.println("Reading...");
 // Initialize transmission and send file command
   Wire.beginTransmission(address);
@@ -40,13 +48,6 @@ void loop (void) {
   for (uint8_t i = 0; i < 4; i++) {
     size = (size << 8) | Wire.read();
   }
-
-  Serial.println(ChkFileExistsOnSD("FA2") ? "Yay! File (FA2) found." : "File not found, so sad");
-
-  Serial.println("Listing SD card contents:");
-     listSDContents();
-  Serial.println("Done listing files.");
-  
 // Read file content
   Wire.beginTransmission(address);
   Wire.write('R');
