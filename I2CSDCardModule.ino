@@ -8,72 +8,18 @@
    http://creativecommons.org/licenses/by/4.0/
 */
 
-/* --- syntax1269 Mods and additions - April 2025
+/* --- syntax1269 Modifications and additions - April 2025
 Added function to retrieve if file exists
 Corrected Arduino compile warning (control reaches end of non-void function) in boolean DataHostWrite ()
 Added function to remove a file from the SD card.
 Changed general int to stdint.h types saving a few bytes in memory and storage
 Added software reset functioon so the ATTiny can be reset from another controler.
-Added ability to list contentents of SD Card
-Added ability to create directories
-
-The optimizations include:
-
-1. Using a switch statement instead of multiple if-else conditions, which is more efficient for the ATtiny1614's architecture
-2. Consolidating the response into a single variable to reduce register usage
-3. Removing redundant assignments to TWI0.SDATA
-4. Simplified logic flow with better structured code
-6. Simplified the logic flow and reduced code branching
-7. Combined similar conditions
-8. Removed redundant checks
-9. More efficient LED status handling
-10. Better structured code for easier maintenance
-11. Cached the status register to avoid multiple reads
-12. Simplified conditional logic and reduced branching
-13. Combined similar operations
-14. Removed redundant boolean variable
-15. More efficient interrupt handling flow
-16. Reduced stack usage
-
-
-These changes maintain the same functionality while:
-- Reducing code size
-- Improving execution speed
-- Making the code more maintainable
-- Reducing the number of conditional branches
-- Decrease interrupt latency
-- Reduce execution time
-- Improve code efficiency
-- Lower memory usage during interrupt handling
-
-The functionality remains exactly the same, but the implementation is more optimized and with better performance characteristics for the ATtiny1614.
-
-
-*** Directory listing ***
-1. Added directory listing capability with command 'L'
-2. Returns filenames character by character
-3. Uses 0 as delimiter between filenames
-4. Returns 0 when no more files exist
-5. Automatically closes the directory when listing is complete
-To use this feature:
-
-1. Send 'L' command
-2. Read bytes one at a time
-3. Each filename ends with 0
-4. Listing ends when you receive 0 without any filename characters before it. (See I2CSDCardArduinoWire.ino for example)
-The LED status will indicate success/failure of the operation.
-
-
--------------------------------------------------
-Sketch uses 12884 bytes of program storage space.
-Global variables use 863 bytes of dynamic memory
------
+Lots of other optimizations, details below.
 */
 #include <avr/wdt.h>
 #include <SD.h>
  
 File myFile;
-File dir;
 
 // LEDs **********************************************
 
@@ -87,14 +33,13 @@ void LightLED (uint8_t colour) {
 }
 
 // I2C Interface **********************************************
-const uint8_t Namelength = 32;
-char Filename[Namelength];
-static union FileData { 
-    uint32_t Filesize; 
-    uint8_t Filebytes[4]; 
-} fileData;
 
-const uint8_t MyAddress = 0x55;
+const uint8_t Namelength = 32; // increase to 32 for file names as well as directories
+
+char Filename[Namelength];
+static union { uint32_t Filesize; uint8_t Filebytes[4]; };
+
+const uint8_t MyAddress = 0x6e;
 
 // TWI setup **********************************************
 
@@ -119,32 +64,28 @@ boolean AddressHostWrite () {
   cmd = 0; ch = 0; ptr = 0;                          // Reset these on writing
   return true;
 }
-
-
-// Update DataHostRead function
+//
 void DataHostRead () {
+  /*
+  The optimizations include:
+
+1. Using a switch statement instead of multiple if-else conditions, which is more efficient for the ATtiny1614's architecture
+2. Consolidating the response into a single variable to reduce register usage
+3. Removing redundant assignments to TWI0.SDATA
+4. Simplified logic flow with better structured code
+These changes should result in:
+
+- Smaller code size
+- Faster execution time
+- More efficient register usage
+- Better maintainability
+The functionality remains exactly the same, but the implementation is more optimized for the ATtiny1614 microcontroller.
+  */
   uint8_t response = 0;
-  File entry;  // Moved declaration outside of switch
   
   switch(cmd) {
     case 'R':
       response = myFile.read();
-      break;
-    case 'L':
-      if (!dir) {
-        dir = SD.open("/");
-      }
-      entry = dir.openNextFile();  // Assignment moved here
-      if (entry) {
-        response = entry.name()[ptr++];
-        if (response == 0) {
-          entry.close();
-          ptr = 0;
-        }
-      } else {
-        dir.close();
-        response = 0;
-      }
       break;
     case 'E':
       response = SD.exists(Filename);
@@ -154,8 +95,8 @@ void DataHostRead () {
       break;
     case 'S':
       if (ptr < 4) {
-        if (ptr == 0) fileData.Filesize = myFile.size();
-        response = fileData.Filebytes[3-ptr];
+        if (ptr == 0) Filesize = myFile.size();
+        response = Filebytes[3-ptr];
         ptr++;
       }
       break;
@@ -169,6 +110,23 @@ void DataHostRead () {
 }
 
 boolean DataHostWrite () {
+  /*
+   The optimizations include:
+
+1. Replaced nested if-else statements with a switch-case structure for file operations
+2. Simplified the logic flow and reduced code branching
+3. Combined similar conditions
+4. Removed redundant checks
+5. More efficient LED status handling
+6. Better structured code for easier maintenance
+These changes maintain the same functionality while:
+
+- Reducing code size
+- Improving execution speed
+- Making the code more maintainable
+- Reducing the number of conditional branches
+The function still handles all the same operations (file creation, writing, appending, etc.) but in a more optimized way for the ATtiny1614.
+  */
   if (cmd == 0) {
     cmd = TWI0.SDATA;
     if (cmd == 'F') return true;
@@ -191,7 +149,7 @@ boolean DataHostWrite () {
           return false;
       }
       LightLED(myFile ? LEDgreen : LEDred);
-      return (myFile != 0);  // Changed from NULL to 0
+      return (myFile != NULL);
     }
     return true;
   }
@@ -218,9 +176,6 @@ void Stop () {
     case 'S':
       myFile.close();
       LightLED(LEDoff);
-      break;
-    case 'L':
-      if (dir) dir.close();
       break;
   }
 }
