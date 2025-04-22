@@ -1,258 +1,235 @@
-/* I2C SC-Card Module - see http://www.technoblogy.com/show?1LJI
+#include <Wire.h>
 
-   David Johnson-Davies - www.technoblogy.com - 7th July 2022
-   ATtiny1614 @ 20MHz (internal clock; BOD disabled)
-   
-   CC BY 4.0
-   Licensed under a Creative Commons Attribution 4.0 International license: 
-   http://creativecommons.org/licenses/by/4.0/
-*/
+#define I2C_SLAVE_ADDR 0x6E
+#define FILENAME       "test.txt"
+#define DIRNAME        "mydir"
 
-/* --- syntax1269 Modifications and additions - April 2025
-Added function to retrieve if file exists
-Corrected Arduino compile warning (control reaches end of non-void function) in boolean DataHostWrite ()
-Added function to remove a file from the SD card.
-Changed general int to stdint.h types saving a few bytes in memory and storage
-Added software reset functioon so the ATTiny can be reset from another controler.
-Lots of other optimizations, details below.
-*/
-#include <avr/wdt.h>
-#include <SD.h>
- 
-File myFile;
-
-// LEDs **********************************************
-
-const uint8_t LEDoff = 0;
-const uint8_t LEDgreen = 1;
-const uint8_t LEDred = 2;
-
-void LightLED (uint8_t colour) {
-  digitalWrite(5, colour & 1);
-  digitalWrite(4, colour>>1 & 1);
-}
-
-// I2C Interface **********************************************
-
-const uint8_t Namelength = 32; // increase to 32 for file names as well as directories
-
-char Filename[Namelength];
-static union { uint32_t Filesize; uint8_t Filebytes[4]; };
-
-const uint8_t MyAddress = 0x6e;
-
-// TWI setup **********************************************
-
-void I2CSetup () {
-  TWI0.CTRLA = 0;                                        // Default timings
-  TWI0.SADDR = MyAddress<<1;                             // Bottom bit is R/W bit
-  // Enable address, data, and stop interrupts:
-  TWI0.SCTRLA = TWI_APIEN_bm | TWI_DIEN_bm | TWI_PIEN_bm | TWI_ENABLE_bm;
-}
-
-// Functions to handle each of the cases **********************************************
-
-uint8_t cmd = 0;                                         // Currently active command
-uint8_t ch = 0, ptr = 0;                                 // Filename and size pointers
-boolean checknack = false;                               // Don't check Host NACK first time
-
-boolean AddressHostRead () {
-  return true;
-}
-
-boolean AddressHostWrite () {
-  cmd = 0; ch = 0; ptr = 0;                          // Reset these on writing
-  return true;
-}
-//
-void DataHostRead () {
-  /*
-  The optimizations include:
-
-1. Using a switch statement instead of multiple if-else conditions, which is more efficient for the ATtiny1614's architecture
-2. Consolidating the response into a single variable to reduce register usage
-3. Removing redundant assignments to TWI0.SDATA
-4. Simplified logic flow with better structured code
-These changes should result in:
-
-- Smaller code size
-- Faster execution time
-- More efficient register usage
-- Better maintainability
-The functionality remains exactly the same, but the implementation is more optimized for the ATtiny1614 microcontroller.
-  */
-  uint8_t response = 0;
-  
-  switch(cmd) {
-    case 'R':
-      response = myFile.read();
-      break;
-    case 'E':
-      response = SD.exists(Filename);
-      break;
-    case 'X':
-      response = SD.remove(Filename);
-      break;
-    case 'S':
-      if (ptr < 4) {
-        if (ptr == 0) Filesize = myFile.size();
-        response = Filebytes[3-ptr];
-        ptr++;
-      }
-      break;
-    case 'Z':
-      _PROTECTED_WRITE(RSTCTRL.SWRR, 1);
-      wdt_reset();
-      break;
+// Helper to send filename
+void sendFilename(const char* name) {
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('F');
+  for (size_t i = 0; i < strlen(name); ++i) {
+    Wire.write(name[i]);
   }
-  
-  TWI0.SDATA = response;
+  Wire.endTransmission();
+  delay(5);
 }
 
-boolean DataHostWrite () {
-  /*
-   The optimizations include:
+// Write a byte to a file (create/truncate)
+void writeFile(const char* name, uint8_t data) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('W');
+  Wire.endTransmission();
+  delay(5);
 
-1. Replaced nested if-else statements with a switch-case structure for file operations
-2. Simplified the logic flow and reduced code branching
-3. Combined similar conditions
-4. Removed redundant checks
-5. More efficient LED status handling
-6. Better structured code for easier maintenance
-These changes maintain the same functionality while:
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write(data);
+  Wire.endTransmission();
+  delay(5);
+}
 
-- Reducing code size
-- Improving execution speed
-- Making the code more maintainable
-- Reducing the number of conditional branches
-The function still handles all the same operations (file creation, writing, appending, etc.) but in a more optimized way for the ATtiny1614.
-  */
-  if (cmd == 0) {
-    cmd = TWI0.SDATA;
-    if (cmd == 'F') return true;
-    
-    if (!myFile) {
-      switch(cmd) {
-        case 'W':
-          myFile = SD.open(Filename, O_RDWR | O_CREAT | O_TRUNC);
-          break;
-        case 'R':
-        case 'S':
-          myFile = SD.open(Filename, O_READ);
-          break;
-        case 'A':
-          myFile = SD.open(Filename, O_RDWR | O_CREAT | O_APPEND);
-          break;
-        case 'D':
-          return SD.mkdir(Filename);
-        default:
-          return false;
-      }
-      LightLED(myFile ? LEDgreen : LEDred);
-      return (myFile != NULL);
-    }
-    return true;
+// Append a byte to a file
+void appendFile(const char* name, uint8_t data) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('A');
+  Wire.endTransmission();
+  delay(5);
+
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write(data);
+  Wire.endTransmission();
+  delay(5);
+}
+
+// Read a byte from a file
+int readFile(const char* name) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('R');
+  Wire.endTransmission();
+  delay(5);
+
+  Wire.requestFrom(I2C_SLAVE_ADDR, 1);
+  if (Wire.available()) {
+    return Wire.read();
   }
-  
-  if (cmd == 'F' && ch < Namelength) {
-    Filename[ch++] = TWI0.SDATA;
-    Filename[ch] = 0;
-    return true;
+  return -1;
+}
+
+// Check if file exists
+bool fileExists(const char* name) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('E');
+  Wire.endTransmission();
+  delay(5);
+
+  Wire.requestFrom(I2C_SLAVE_ADDR, 1);
+  if (Wire.available()) {
+    return Wire.read() != 0;
   }
-  
-  if (cmd == 'W' || cmd == 'A') {
-    myFile.write(TWI0.SDATA);
-    return true;
-  }
-  
   return false;
 }
 
-void Stop () {
-  switch(cmd) {
-    case 'W':
-    case 'R':
-    case 'A':
-    case 'S':
-      myFile.close();
-      LightLED(LEDoff);
-      break;
+// Remove a file
+bool removeFile(const char* name) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('X');
+  Wire.endTransmission();
+  delay(5);
+
+  Wire.requestFrom(I2C_SLAVE_ADDR, 1);
+  if (Wire.available()) {
+    return Wire.read() != 0;
   }
+  return false;
 }
 
-void SendResponse (boolean succeed) {
-  if (succeed) {
-    TWI0.SCTRLB = TWI_ACKACT_ACK_gc | TWI_SCMD_RESPONSE_gc;     // Send ACK
-  } else {
-    TWI0.SCTRLB = TWI_ACKACT_NACK_gc | TWI_SCMD_RESPONSE_gc;    // Send NACK
+// Create a directory
+bool makeDir(const char* name) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('D');
+  Wire.endTransmission();
+  delay(5);
+
+  Wire.requestFrom(I2C_SLAVE_ADDR, 1);
+  if (Wire.available()) {
+    return Wire.read() != 0;
   }
+  return false;
 }
 
-// TWI interrupt service routine **********************************************
+// Get file size (returns uint32_t)
+uint32_t getFileSize(const char* name) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('S');
+  Wire.endTransmission();
+  delay(5);
 
-// TWI interrupt
-ISR(TWI0_TWIS_vect) { 
-  /*
-   The optimizations include:
+  uint32_t size = 0;
+  Wire.requestFrom(I2C_SLAVE_ADDR, 4);
+  for (int i = 0; i < 4 && Wire.available(); ++i) {
+    size = (size << 8) | Wire.read();
+  }
+  return size;
+}
 
-1. Cached the status register to avoid multiple reads
-2. Simplified conditional logic and reduced branching
-3. Combined similar operations
-4. Removed redundant boolean variable
-5. More efficient interrupt handling flow
-6. Reduced stack usage
-These changes will:
+// Reset the ATtiny1614 remotely
+void remoteReset() {
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('Z');
+  Wire.endTransmission();
+  delay(5);
+}
 
-- Decrease interrupt latency
-- Reduce execution time
-- Improve code efficiency
-- Lower memory usage during interrupt handling
-The functionality remains the same but with better performance characteristics for the ATtiny1614.
-  */
-  uint8_t status = TWI0.SSTATUS;
-  
-  // Address interrupt
-  if (status & TWI_APIF_bm) {
-    if (status & TWI_AP_bm) {
-      SendResponse((status & TWI_DIR_bm) ? AddressHostRead() : AddressHostWrite());
-      return;
+// Write a string to a file (create/truncate), chunked for I2C buffer limit
+void writeFileString(const char* name, const char* text) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('W');
+  Wire.endTransmission();
+  delay(5);
+
+  size_t len = strlen(text);
+  size_t sent = 0;
+  while (sent < len) {
+    size_t chunk = len - sent;
+    if (chunk > 31) chunk = 31; // 31 bytes per I2C transmission
+    Wire.beginTransmission(I2C_SLAVE_ADDR);
+    for (size_t i = 0; i < chunk; ++i) {
+      Wire.write(text[sent + i]);
     }
-    // Stop interrupt
-    Stop();
-    TWI0.SCTRLB = TWI_SCMD_COMPTRANS_gc;
-    return;
+    Wire.endTransmission();
+    sent += chunk;
+    delay(5);
   }
-  
-  // Data interrupt
-  if (status & TWI_DIF_bm) {
-    if (status & TWI_DIR_bm) {
-      if ((status & TWI_RXACK_bm) && checknack) {
-        checknack = false;
-      } else {
-        DataHostRead();
-        checknack = true;
-      }
-      TWI0.SCTRLB = TWI_SCMD_RESPONSE_gc;
-    } else {
-      SendResponse(DataHostWrite());
+}
+
+// Append a string to a file, chunked for I2C buffer limit
+void appendFileString(const char* name, const char* text) {
+  sendFilename(name);
+  Wire.beginTransmission(I2C_SLAVE_ADDR);
+  Wire.write('A');
+  Wire.endTransmission();
+  delay(5);
+
+  size_t len = strlen(text);
+  size_t sent = 0;
+  while (sent < len) {
+    size_t chunk = len - sent;
+    if (chunk > 31) chunk = 31; // 31 bytes per I2C transmission
+    Wire.beginTransmission(I2C_SLAVE_ADDR);
+    for (size_t i = 0; i < chunk; ++i) {
+      Wire.write(text[sent + i]);
     }
+    Wire.endTransmission();
+    sent += chunk;
+    delay(5);
   }
 }
 
-// Setup **********************************************
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
 
-void setup (void) {
-  pinMode(4, OUTPUT);
-  pinMode(5, OUTPUT);
-  SD.begin();
-  I2CSetup();
-}
- 
-void loop (void) {
+  // Demo: Write a short string to file
+  writeFileString(FILENAME, "Hello from ESP!");
+  Serial.println("Wrote short string to file");
+
+  // Demo: Read back the short string
+  readFileString(FILENAME);
+
+  // Demo: Write a long string (>32 bytes) to file, chunked
+  const char* longText = "This is a long string sent from ESP8266/ESP32 to the ATtiny1614 SD card module via I2C. It will be chunked!";
+  writeFileString(FILENAME, longText);
+  Serial.println("Wrote long string to file");
+
+  // Demo: Read back the long string
+  readFileString(FILENAME);
+
+  // Demo: Append a string to the file
+  const char* appendText = " Appending this text to the file!";
+  appendFileString(FILENAME, appendText);
+  Serial.println("Appended string to file");
+
+  // Demo: Read back the file after appending
+  readFileString(FILENAME);
+
+  // Demo: Read a byte
+  int val = readFile(FILENAME);
+  Serial.print("Read from file: ");
+  Serial.println(val, HEX);
+
+  // Demo: Check if file exists
+  bool exists = fileExists(FILENAME);
+  Serial.print("File exists: ");
+  Serial.println(exists);
+
+  // Demo: Get file size
+  uint32_t size = getFileSize(FILENAME);
+  Serial.print("File size: ");
+  Serial.println(size);
+
+  // Demo: Remove file
+  bool removed = removeFile(FILENAME);
+  Serial.print("File removed: ");
+  Serial.println(removed);
+
+  // Demo: Make directory
+  bool dirMade = makeDir(DIRNAME);
+  Serial.print("Directory created: ");
+  Serial.println(dirMade);
+
+  // Demo: Remote reset
+  // remoteReset();
+  // Serial.println("Sent remote reset command");
 }
 
-// Function to reset the microcontroller
-void reset() {
-  wdt_enable(WDTO_15MS); // Enable Watchdog Timer with a reset timeout of 15ms
-  while (1); // Wait for the watchdog timer to reset the device
+void loop() {
+  // Nothing here
 }
