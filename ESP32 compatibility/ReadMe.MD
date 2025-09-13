@@ -3,7 +3,7 @@
 This demo targets the ATtiny1614 I2C SD-Card Module firmware and implements an ESP32 master that speaks the very small command set used by that firmware (`F` filename, `W` write, `A` append, `R` read, `S` size). It intentionally avoids the ESP32 hardware I2C driver and Arduino `Wire.h`, and instead uses a minimal bit‑banged (software) I2C master.
 
 ## The problem: long clock stretching
-The ATtiny1614 [I2CSDCardModule.ino](https://github.com/technoblogy/i2c-sd-card-module/blob/main/I2CSDCardModule.ino) firmware serves SD card operations over I2C. Opening a file, reading sectors, or appending data can occasionally block inside the ATtiny’s SD stack. During those moments, the ATtiny holds SCL low (clock stretching) until the byte can be accepted or returned. In practice we observed stretches on the order of tens of milliseconds (≈65 ms in worst cases) during file operations.
+The ATtiny1614 I2C SD-Card Module firmware serves SD card operations over I2C. Opening a file, reading sectors, or appending data can occasionally block inside the ATtiny’s SD stack. During those moments, the ATtiny holds SCL low (clock stretching) until the byte can be accepted or returned. In practice we observed stretches on the order of tens of milliseconds (≈65 ms in worst cases) during file operations.
 
 ESP32’s hardware I2C master (used both by ESP‑IDF and Arduino Wire) has internal bus‑timeout and state machine constraints. When a slave holds SCL low for "too long," the controller times out, aborts the transaction, or returns error codes. Even when increasing software timeouts, the peripheral’s finite hardware timeout and ISR/driver assumptions still cause aborted transactions when stretches are very long and occur repeatedly mid‑byte.
 
